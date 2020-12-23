@@ -24,6 +24,13 @@ import Animated, {
   Extrapolate,
   and,
   call,
+  multiply,
+  add,
+  divide,
+  sub,
+  lessThan,
+  greaterThan,
+  or,
 } from 'react-native-reanimated';
 
 import Svg, { ClipPath, Defs, Image, Path, Rect } from 'react-native-svg';
@@ -64,10 +71,12 @@ const Page = ({
   fillPath,
   zIndex,
   listRef,
+  total,
 }: {
   fillPath: string;
   zIndex: number;
   listRef: React.RefObject<FlatListProps<JSX.Element>>;
+  total: number;
 }) => {
   const clock = useRef(new Animated.Clock()).current;
   const progress = useRef(new Animated.Value<number>(0)).current;
@@ -80,6 +89,7 @@ const Page = ({
 
   const translateX = useRef(new Animated.Value<number>(width)).current;
   const translateY = useRef(new Animated.Value<number>(width)).current;
+  const velocityX = useRef(new Animated.Value<number>(width)).current;
 
   // useCode(
   //   () =>
@@ -90,9 +100,26 @@ const Page = ({
   //   []
   // );
 
+  const extrapolateSnapPoint = cond(
+    lessThan(velocityX, 0),
+    divide(multiply(add(zIndex, 1), width), width),
+    divide(multiply(sub(zIndex, 1), width), width)
+  );
+
+  const snapPoint = cond(
+    or(
+      lessThan(extrapolateSnapPoint, 0),
+      greaterThan(extrapolateSnapPoint, total)
+    ),
+    zIndex,
+    extrapolateSnapPoint
+  );
+
+  useCode(() => debug('velocityX', velocityX), []);
+
   const onGestureEvent = event<PanGestureHandlerGestureEvent>([
     {
-      nativeEvent: { x: translateX, y: translateY },
+      nativeEvent: { x: translateX, y: translateY, velocityX },
     },
   ]);
 
@@ -114,16 +141,16 @@ const Page = ({
 
   const dPathFixo = `M 0,0 H ${width} S ${width},${height} ${width},${height} H 0 Z`;
 
-  const scrollTo = () => {
+  const scrollTo = (args: readonly number[]) => {
     console.log('listRef.current.scrollToIndex({ index: 0 });');
-    listRef.current.scrollToIndex({ index: 3 });
+    listRef.current.scrollToIndex({ index: args[0] });
   };
 
   useCode(
     () =>
       cond(
         and(eq(gestureState, State.END), eq(gestureOldState, State.ACTIVE)),
-        [debug('gestureState', gestureState), call([], scrollTo)]
+        [debug('gestureState', gestureState), call([snapPoint], scrollTo)]
       ),
     []
   );

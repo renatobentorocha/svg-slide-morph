@@ -45,13 +45,15 @@ const withSpring = (clock: Animated.Clock) => {
 
 const renderItem = (
   index: number,
-  listRef: React.RefObject<FlatListProps<JSX.Element>>
+  listRef: React.RefObject<FlatListProps<JSX.Element>>,
+  total: number
 ) => (
   <Page
     key={index.toString()}
     fillPath={FILL_COLORS[index]}
     zIndex={index}
     listRef={listRef}
+    total={total}
   />
 );
 
@@ -70,7 +72,9 @@ export default function App() {
         }}
         data={[0, 1, 2, 3]}
         keyExtractor={(_, index) => index.toString()}
-        renderItem={({ index }) => renderItem(index, listRef)}
+        renderItem={({ index }) =>
+          renderItem(index, listRef, [0, 1, 2, 3].length - 1)
+        }
         pagingEnabled
         horizontal
         onScrollToIndexFailed={(info) => console.log(info)}

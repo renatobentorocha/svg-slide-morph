@@ -31,6 +31,9 @@ import Animated, {
   lessThan,
   greaterThan,
   or,
+  onChange,
+  greaterOrEq,
+  not,
 } from 'react-native-reanimated';
 
 import Svg, { ClipPath, Defs, Image, Path, Rect } from 'react-native-svg';
@@ -78,9 +81,6 @@ const Page = ({
   listRef: React.RefObject<FlatListProps<JSX.Element>>;
   total: number;
 }) => {
-  const clock = useRef(new Animated.Clock()).current;
-  const progress = useRef(new Animated.Value<number>(0)).current;
-
   const gestureState = useRef(new Animated.Value<State>(State.UNDETERMINED))
     .current;
 
@@ -88,38 +88,54 @@ const Page = ({
     .current;
 
   const translateX = useRef(new Animated.Value<number>(width)).current;
-  const translateY = useRef(new Animated.Value<number>(width)).current;
+  const translateY = useRef(new Animated.Value<number>(height)).current;
+
+  const translateXRightCorner = useRef(new Animated.Value<number>(width))
+    .current;
+  const translateYRightCorner = useRef(new Animated.Value<number>(height))
+    .current;
+
+  const translateXLeftCorner = useRef(new Animated.Value<number>(0)).current;
+  const translateYLeftCorner = useRef(new Animated.Value<number>(0)).current;
+
   const velocityX = useRef(new Animated.Value<number>(width)).current;
 
-  // useCode(
-  //   () =>
-  //     cond(clockRunning(clock), [
-  //       set(progress, withSpring(clock)),
-  //       debug('progress', progress),
-  //     ]),
-  //   []
-  // );
+  const extrapolateSnapPoint = useRef(new Animated.Value<number>(0)).current;
 
-  const extrapolateSnapPoint = cond(
-    lessThan(velocityX, 0),
-    divide(multiply(add(zIndex, 1), width), width),
-    divide(multiply(sub(zIndex, 1), width), width)
+  const snapPoint = useRef(new Animated.Value<number>(0)).current;
+
+  const snapToRight = cond(lessThan(velocityX, 0), 1, 0);
+
+  useCode(
+    () =>
+      block([
+        onChange(
+          translateX,
+          cond(
+            snapToRight,
+            set(translateXRightCorner, translateX),
+            set(translateXLeftCorner, translateX)
+          )
+        ),
+        onChange(
+          translateY,
+          cond(
+            snapToRight,
+            set(translateYRightCorner, translateY),
+            set(translateYLeftCorner, translateY)
+          )
+        ),
+      ]),
+    []
   );
-
-  const snapPoint = cond(
-    or(
-      lessThan(extrapolateSnapPoint, 0),
-      greaterThan(extrapolateSnapPoint, total)
-    ),
-    zIndex,
-    extrapolateSnapPoint
-  );
-
-  useCode(() => debug('velocityX', velocityX), []);
 
   const onGestureEvent = event<PanGestureHandlerGestureEvent>([
     {
-      nativeEvent: { x: translateX, y: translateY, velocityX },
+      nativeEvent: {
+        x: translateX,
+        y: translateY,
+        velocityX,
+      },
     },
   ]);
 
@@ -131,18 +147,20 @@ const Page = ({
 
   const dPath = concat(
     `M 0,0 H ${width} S `,
-    translateX,
+    cond(lessThan(velocityX, 0), translateXRightCorner, width),
     `,`,
-    translateY,
+    cond(lessThan(velocityX, 0), translateYRightCorner, height),
     ` ${width},${height} `,
-    `H 0
-     Z`
+    `H 0 S `,
+    cond(greaterOrEq(velocityX, 0), translateXLeftCorner, 0),
+    `,`,
+    cond(greaterOrEq(velocityX, 0), translateYLeftCorner, 0),
+    ` ${0},${0} `
   );
 
   const dPathFixo = `M 0,0 H ${width} S ${width},${height} ${width},${height} H 0 Z`;
 
   const scrollTo = (args: readonly number[]) => {
-    console.log('listRef.current.scrollToIndex({ index: 0 });');
     listRef.current.scrollToIndex({ index: args[0] });
   };
 
@@ -150,7 +168,34 @@ const Page = ({
     () =>
       cond(
         and(eq(gestureState, State.END), eq(gestureOldState, State.ACTIVE)),
-        [debug('gestureState', gestureState), call([snapPoint], scrollTo)]
+        [
+          set(
+            extrapolateSnapPoint,
+            cond(
+              lessThan(velocityX, 0),
+              divide(multiply(add(zIndex, 1), width), width),
+              divide(multiply(sub(zIndex, 1), width), width)
+            )
+          ),
+
+          set(
+            snapPoint,
+            cond(
+              or(
+                lessThan(extrapolateSnapPoint, 0),
+                greaterThan(extrapolateSnapPoint, total)
+              ),
+              zIndex,
+              extrapolateSnapPoint
+            )
+          ),
+
+          set(translateXRightCorner, width),
+          set(translateYRightCorner, height),
+          set(translateXLeftCorner, 0),
+          set(translateYLeftCorner, 0),
+          call([snapPoint], scrollTo),
+        ]
       ),
     []
   );
@@ -186,7 +231,7 @@ const Page = ({
                 height={height}
                 preserveAspectRatio="xMidYMid meet"
                 opacity="1"
-                href={images[zIndex + 1]()}
+                href={images[zIndex === total ? zIndex - 1 : zIndex + 1]()}
                 clipPath="url(#clip)"
               />
             </Svg>
